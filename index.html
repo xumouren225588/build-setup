@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>7z自解压文件生成器</title>
+</head>
+<body>
+    <h1>7z自解压文件生成器</h1>
+    
+    <div>
+        <label>
+            <input type="radio" name="mode" value="sfx" checked> 仅创建自解压文件
+        </label>
+        <label>
+            <input type="radio" name="mode" value="installer"> 创建安装程序
+        </label>
+    </div>
+    
+    <div id="installerOptions" style="display: none; margin: 10px 0;">
+        <div>
+            <label for="windowTitle">窗口标题：</label>
+            <input type="text" id="windowTitle" placeholder="输入窗口标题">
+        </div>
+        <div style="margin: 5px 0;">
+            <label for="runCommand">解压后运行的命令：</label>
+            <input type="text" id="runCommand" placeholder="例如：setup.exe">
+        </div>
+    </div>
+    
+    <div style="margin: 10px 0;">
+        <label for="7zFile">上传7z文件：</label>
+        <input type="file" id="7zFile" accept=".7z" required>
+    </div>
+    
+    <button id="generateBtn">生成并下载</button>
+
+    <script>
+        // 显示/隐藏安装程序选项
+        const modeRadios = document.querySelectorAll('input[name="mode"]');
+        const installerOptions = document.getElementById('installerOptions');
+        
+        modeRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                installerOptions.style.display = radio.value === 'installer' ? 'block' : 'none';
+            });
+        });
+        
+        // 生成按钮点击事件
+        document.getElementById('generateBtn').addEventListener('click', async () => {
+            const selectedMode = document.querySelector('input[name="mode"]:checked').value;
+            const sevenZFile = document.getElementById('7zFile').files[0];
+            
+            if (!sevenZFile) {
+                alert('请上传7z文件');
+                return;
+            }
+            
+            try {
+                if (selectedMode === 'sfx') {
+                    // 仅创建自解压文件模式
+                    await createSfxFile(sevenZFile);
+                } else {
+                    // 创建安装程序模式
+                    const windowTitle = document.getElementById('windowTitle').value;
+                    const runCommand = document.getElementById('runCommand').value;
+                    
+                    if (!windowTitle || !runCommand) {
+                        alert('请填写窗口标题和运行命令');
+                        return;
+                    }
+                    
+                    await createInstallerFile(sevenZFile, windowTitle, runCommand);
+                }
+            } catch (error) {
+                console.error('生成失败:', error);
+                alert('生成失败: ' + error.message);
+            }
+        });
+        
+        // 创建自解压文件
+        async function createSfxFile(sevenZFile) {
+            // 下载7z.sfx文件
+            const sfxResponse = await fetch('https://jiashu.1win.eu.org/https://github.com/xumouren225588/res/raw/main/7z.sfx');
+            if (!sfxResponse.ok) {
+                throw new Error('无法下载7z.sfx文件');
+            }
+            const sfxBlob = await sfxResponse.blob();
+            
+            // 读取上传的7z文件
+            const sevenZBlob = await readFileAsBlob(sevenZFile);
+            
+            // 合并文件
+            const combinedBlob = await combineBlobs([sfxBlob, sevenZBlob]);
+            
+            // 下载结果文件
+            downloadBlob(combinedBlob, 'output.exe');
+        }
+        
+        // 创建安装程序
+        async function createInstallerFile(sevenZFile, windowTitle, runCommand) {
+            // 创建cf.txt内容
+            const cfContent = `;!@Install@!UTF-8!
+Title="${windowTitle}"
+RunProgram="${runCommand}"
+;!@InstallEnd@!`;
+            const cfBlob = new Blob([cfContent], { type: 'text/plain' });
+            
+            // 下载7zSD.sfx文件
+            const sfxResponse = await fetch('https://jiashu.1win.eu.org/https://github.com/xumouren225588/res/raw/main/7zSD.sfx');
+            if (!sfxResponse.ok) {
+                throw new Error('无法下载7zSD.sfx文件');
+            }
+            const sfxBlob = await sfxResponse.blob();
+            
+            // 读取上传的7z文件
+            const sevenZBlob = await readFileAsBlob(sevenZFile);
+            
+            // 合并文件
+            const combinedBlob = await combineBlobs([sfxBlob, cfBlob, sevenZBlob]);
+            
+            // 下载结果文件
+            downloadBlob(combinedBlob, 'installer.exe');
+        }
+        
+        // 辅助函数：将文件转换为Blob
+        function readFileAsBlob(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(new Blob([reader.result]));
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+        
+        // 辅助函数：合并多个Blob
+        async function combineBlobs(blobs) {
+            const buffers = [];
+            for (const blob of blobs) {
+                const arrayBuffer = await blob.arrayBuffer();
+                buffers.push(new Uint8Array(arrayBuffer));
+            }
+            
+            // 计算总长度
+            const totalLength = buffers.reduce((sum, buffer) => sum + buffer.length, 0);
+            
+            // 合并所有缓冲区
+            const combinedBuffer = new Uint8Array(totalLength);
+            let offset = 0;
+            for (const buffer of buffers) {
+                combinedBuffer.set(buffer, offset);
+                offset += buffer.length;
+            }
+            
+            return new Blob([combinedBuffer], { type: 'application/octet-stream' });
+        }
+        
+        // 辅助函数：下载Blob文件
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
